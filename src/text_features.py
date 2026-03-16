@@ -23,6 +23,14 @@ def build_vocab(texts, max_words=10000):
     word_index = {word: i for i, (word, _) in enumerate(most_common)}
     return word_index
 
+def truncate_text(text, max_words=120, min_words=80):
+    if not isinstance(text, str):
+        return None
+    words = text.split()
+    if len(words) >= min_words:
+        return ' '.join(words[:max_words])
+    return None
+
 
 # ── Bag of Words (one-hot) ─────────────────────────────────────────────────────
 
