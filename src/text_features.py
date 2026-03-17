@@ -50,15 +50,24 @@ def texts_to_bow(texts, word_index, max_words):
 
 class TFIDFVectorizer:
 
-    def __init__(self, max_words=10000):
+    def __init__(self, max_words=10000, ngram_range=(1, 1)):
         self.max_words = max_words
+        self.ngram_range = ngram_range
         self.word_index = {}
         self.idf = None
+
+    def _get_ngrams(self, tokens):
+        ngrams = []
+        min_n, max_n = self.ngram_range
+        for n in range(min_n, max_n + 1):
+            ngrams.extend([' '.join(tokens[i:i+n]) for i in range(len(tokens) - n + 1)])
+        return ngrams
 
     def fit(self, texts):
         df_counter = Counter()
         for text in texts:
-            df_counter.update(set(text.split()))
+            tokens = text.split()
+            df_counter.update(set(self._get_ngrams(tokens)))
 
         most_common = df_counter.most_common(self.max_words)
         self.word_index = {word: i for i, (word, _) in enumerate(most_common)}
@@ -72,11 +81,13 @@ class TFIDFVectorizer:
         X = np.zeros((len(texts), len(self.word_index)), dtype=np.float32)
         for i, text in enumerate(texts):
             tokens = text.split()
-            tf_counter = Counter(tokens)
-            for word, count in tf_counter.items():
-                if word in self.word_index:
-                    tf = count / (len(tokens) + 1e-10)
-                    j = self.word_index[word]
+            ngrams = self._get_ngrams(tokens)
+            tf_counter = Counter(ngrams)
+            total = len(ngrams)
+            for ngram, count in tf_counter.items():
+                if ngram in self.word_index:
+                    tf = count / (total + 1e-10)
+                    j = self.word_index[ngram]
                     X[i, j] = tf * self.idf[j]
         # normalização L2 por linha
         norms = np.linalg.norm(X, axis=1, keepdims=True)
