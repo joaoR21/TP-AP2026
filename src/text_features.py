@@ -97,6 +97,94 @@ class TFIDFVectorizer:
         return self.fit(texts).transform(texts)
 
 
+# ── character n-gram TF-IDF ────────────────────────────────────────────────────
+
+def _char_clean(text):
+    text = re.sub(r"<.*?>", "", text)
+    return text.lower()
+
+
+class CharNgramVectorizer:
+    """TF-IDF sobre character n-grams (ex.: 3-5 chars) do texto minimamente limpo.
+
+    Captura padrões de estilo a nível sublexical: sufixos, pontuação integrada,
+    transições, espaçamento.
+    """
+
+    def __init__(self, max_features=10000, ngram_range=(3, 5)):
+        self.max_features = max_features
+        self.ngram_range  = ngram_range
+        self.vocab        = {}
+        self.idf          = None
+
+    def _get_char_ngrams(self, text):
+        ngrams = []
+        min_n, max_n = self.ngram_range
+        for n in range(min_n, max_n + 1):
+            ngrams.extend([text[i:i+n] for i in range(len(text) - n + 1)])
+        return ngrams
+
+    def fit(self, texts):
+        df_counter = Counter()
+        for text in texts:
+            t = _char_clean(text)
+            df_counter.update(set(self._get_char_ngrams(t)))
+        most_common = df_counter.most_common(self.max_features)
+        self.vocab = {ng: i for i, (ng, _) in enumerate(most_common)}
+        n_docs = len(texts)
+        df = np.array([df_counter[ng] for ng in self.vocab], dtype=np.float32)
+        self.idf = np.log((1 + n_docs) / (1 + df)) + 1.0
+        return self
+
+    def transform(self, texts):
+        X = np.zeros((len(texts), len(self.vocab)), dtype=np.float32)
+        for i, text in enumerate(texts):
+            t = _char_clean(text)
+            ngrams = self._get_char_ngrams(t)
+            tf_counter = Counter(ngrams)
+            total = max(len(ngrams), 1)
+            for ng, count in tf_counter.items():
+                if ng in self.vocab:
+                    tf = count / total
+                    X[i, self.vocab[ng]] = tf * self.idf[self.vocab[ng]]
+        norms = np.linalg.norm(X, axis=1, keepdims=True)
+        return X / (norms + 1e-10)
+
+    def fit_transform(self, texts):
+        return self.fit(texts).transform(texts)
+
+
+# ── vectorizador combinado (TF-IDF palavra + char n-grams) ─────────────────────
+
+STYLE_DIM = 0  # mantido por compatibilidade
+
+class CombinedVectorizer:
+    """TF-IDF de palavras (1,2)-grams + TF-IDF de character (3,5)-grams.
+
+    Os char n-grams capturam padrões de estilo sub-lexical sem o bias
+    das features estilométricas numéricas.
+    """
+
+    def __init__(self, max_words=15000, ngram_range=(1, 2),
+                 max_chars=10000, char_range=(3, 5)):
+        self.tfidf    = TFIDFVectorizer(max_words=max_words, ngram_range=ngram_range)
+        self.char_vec = CharNgramVectorizer(max_features=max_chars, ngram_range=char_range)
+        self.word_index = {}
+
+    def fit_transform(self, raw_texts):
+        clean = [clean_text(t) for t in raw_texts]
+        X_word = self.tfidf.fit_transform(clean)
+        self.word_index = self.tfidf.word_index
+        X_char = self.char_vec.fit_transform(raw_texts)
+        return np.hstack([X_word, X_char])
+
+    def transform(self, raw_texts):
+        clean = [clean_text(t) for t in raw_texts]
+        X_word = self.tfidf.transform(clean)
+        X_char = self.char_vec.transform(raw_texts)
+        return np.hstack([X_word, X_char])
+
+
 # ── labels ─────────────────────────────────────────────────────────────────────
 
 CLASS_NAMES = ['google',

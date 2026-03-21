@@ -64,10 +64,10 @@ def evaluate(model, loader, criterion):
     return total_loss / len(loader), correct / total
 
 
-def train_model(model, train_loader, val_loader, epochs=50, lr=0.001, patience=10, class_weight=None):
+def train_model(model, train_loader, val_loader, epochs=50, lr=0.001, patience=10, class_weight=None, weight_decay=1e-4):
     weight_tensor = torch.tensor(class_weight, dtype=torch.float32).to(device) if class_weight is not None else None
     criterion = nn.CrossEntropyLoss(weight=weight_tensor)
-    optimizer = torch.optim.Adam(model.parameters(), lr=lr)
+    optimizer = torch.optim.Adam(model.parameters(), lr=lr, weight_decay=weight_decay)
     best_val_acc, patience_counter = 0, 0
     best_state = None
 
