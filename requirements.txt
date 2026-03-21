@@ -4,3 +4,5 @@ scikit-learn
 torch
 datasets
 jupyter
+python-dotenv
+groq
