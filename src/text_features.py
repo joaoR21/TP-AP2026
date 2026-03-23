@@ -156,7 +156,7 @@ class CharNgramVectorizer:
 
 # ── vectorizador combinado (TF-IDF palavra + char n-grams) ─────────────────────
 
-STYLE_DIM = 0  # mantido por compatibilidade
+STYLE_DIM = 0
 
 class CombinedVectorizer:
     """TF-IDF de palavras (1,2)-grams + TF-IDF de character (3,5)-grams.
