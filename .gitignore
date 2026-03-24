@@ -6,3 +6,6 @@ venv/
 env/
 .env
 .env/
+
+# Models
+models/
