@@ -11,20 +11,14 @@ class FFNN(nn.Module):
     def __init__(self, input_dim, n_classes=5, topology=[256,128], dropout=0.3):
         super().__init__()
         layers = []
-        if not topology:
-            layers.append(nn.Linear(input_dim, n_classes))
-        else:
-            layers.append(nn.Linear(input_dim, topology[0]))
-            layers.append(nn.ReLU())
-            if dropout > 0: layers.append(nn.Dropout(dropout))
+        dims   = [input_dim] + topology
 
-            for i in range(1, len(topology)):
-                layers.append(nn.Linear(topology[i - 1], topology[i]))
-                layers.append(nn.ReLU())
-                if dropout > 0: layers.append(nn.Dropout(dropout))
+        for i in range(len(topology)):
+            layers += [nn.Linear(dims[i], dims[i+1]), nn.ReLU()]
+            if dropout > 0:
+                layers.append(nn.Dropout(dropout))
 
-            layers.append(nn.Linear(topology[-1], n_classes))
-
+        layers.append(nn.Linear(dims[-1], n_classes))
         self.net = nn.Sequential(*layers)
 
     def forward(self, x):
@@ -49,19 +43,21 @@ def train_epoch(model, loader, criterion, optimizer):
     return total_loss / len(loader), correct / total
 
 
-def evaluate(model, loader, criterion):
+def evaluate_loss_accuracy(model, loader, criterion):
     model.eval()
-    total_loss, correct, total = 0, 0, 0
+    total_loss = 0.0
+    correct    = 0
+    total      = 0
     with torch.no_grad():
-        for x, y in loader:
-            x, y = x.to(device), y.to(device)
-            outputs = model(x)
-            loss = criterion(outputs, y)
-            total_loss += loss.item()
-            preds = torch.argmax(outputs, dim=1)
-            correct += (preds == y).sum().item()
-            total += y.size(0)
-    return total_loss / len(loader), correct / total
+        for xb, yb in loader:
+            xb, yb  = xb.to(device), yb.to(device)
+            logits  = model(xb)
+            loss    = criterion(logits, yb)
+            total_loss += loss.item() * xb.size(0)
+            preds   = logits.argmax(dim=1)
+            correct += (preds == yb).sum().item()
+            total   += yb.size(0)
+    return total_loss / total, correct / total
 
 
 def train_model(model, train_loader, val_loader, epochs=50, lr=0.001, patience=10, class_weight=None, weight_decay=1e-4):
@@ -73,7 +69,7 @@ def train_model(model, train_loader, val_loader, epochs=50, lr=0.001, patience=1
 
     for epoch in range(1, epochs + 1):
         tr_loss, tr_acc = train_epoch(model, train_loader, criterion, optimizer)
-        vl_loss, vl_acc = evaluate(model, val_loader, criterion)
+        vl_loss, vl_acc = evaluate_loss_accuracy(model, val_loader, criterion)
 
         if epoch % 10 == 0:
             print(f'[Epoch {epoch:03d}] train_acc: {tr_acc:.4f} | val_acc: {vl_acc:.4f}')

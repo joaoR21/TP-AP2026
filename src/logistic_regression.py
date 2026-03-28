@@ -114,7 +114,7 @@ class LogisticRegression:
             np.savez(path, theta=self.theta, mu=self.mu, sigma=self.sigma)
         else:
             np.savez(path, theta=self.theta)
-        print(f"Modelo guardado em {path}")
+        print(f"modelo guardado em {path}")
 
     def load(self, path):
         data = np.load(path)
@@ -123,4 +123,4 @@ class LogisticRegression:
             self.mu = data['mu']
             self.sigma = data['sigma']
             self.standardized = True
-        print(f"Modelo carregado de {path}")
+        print(f"modelo carregado de {path}")
