@@ -184,6 +184,104 @@ class CombinedVectorizer:
         X_char = self.char_vec.transform(raw_texts)
         return np.hstack([X_word, X_char])
 
+# ── features estilométricas ────────────────────────────────────────────────────
+
+def _stylometric_single(text):
+    """Extrai ~20 features estilométricas numéricas de um texto."""
+    words = text.split()
+    n_chars = len(text)
+    n_words = max(len(words), 1)
+    n_sents = max(text.count('.') + text.count('!') + text.count('?'), 1)
+
+    unique_words = set(w.lower() for w in words)
+    ttr = len(unique_words) / n_words                     # type-token ratio
+
+    avg_word_len = np.mean([len(w) for w in words]) if words else 0
+    std_word_len = np.std([len(w) for w in words]) if words else 0
+    avg_sent_len = n_words / n_sents
+
+    # rácios de caracteres
+    n_alpha = sum(c.isalpha() for c in text)
+    n_digit = sum(c.isdigit() for c in text)
+    n_upper = sum(c.isupper() for c in text)
+    n_space = sum(c.isspace() for c in text)
+
+    # pontuação específica
+    n_comma = text.count(',')
+    n_semicolon = text.count(';')
+    n_colon = text.count(':')
+    n_paren = text.count('(') + text.count(')')
+    n_dash = text.count('-') + text.count('–') + text.count('—')
+    n_quote = text.count('"') + text.count("'") + text.count('"') + text.count('"')
+
+    # caracteres especiais / unicode (típicos de certos LLMs)
+    n_special = sum(1 for c in text if not c.isascii())
+
+    feats = [
+        n_chars,                            # 0  comprimento total
+        n_words,                            # 1  num palavras
+        avg_word_len,                       # 2  comp médio palavra
+        std_word_len,                       # 3  std comp palavra
+        avg_sent_len,                       # 4  comp médio frase (em palavras)
+        ttr,                                # 5  type-token ratio
+        n_comma / n_words,                  # 6  vírgulas por palavra
+        n_semicolon / n_words,              # 7  ponto-vírgulas por palavra
+        n_colon / n_words,                  # 8  dois-pontos por palavra
+        n_paren / n_words,                  # 9  parênteses por palavra
+        n_dash / n_words,                   # 10 travessões por palavra
+        n_quote / n_words,                  # 11 aspas por palavra
+        n_upper / max(n_alpha, 1),          # 12 ratio maiúsculas
+        n_digit / max(n_chars, 1),          # 13 ratio dígitos
+        n_space / max(n_chars, 1),          # 14 ratio espaços
+        n_special / max(n_chars, 1),        # 15 ratio caracteres não-ASCII
+        n_sents,                            # 16 num frases
+        len(unique_words) / max(n_sents, 1),# 17 palavras únicas por frase
+    ]
+    return np.array(feats, dtype=np.float32)
+
+
+def extract_stylometric_features(texts):
+    """Extrai features estilométricas para uma lista de textos. Retorna array normalizado."""
+    X = np.array([_stylometric_single(t) for t in texts])
+    # z-score normalização por coluna
+    means = X.mean(axis=0, keepdims=True)
+    stds  = X.std(axis=0, keepdims=True) + 1e-10
+    return (X - means) / stds, means, stds
+
+
+def apply_stylometric_features(texts, means, stds):
+    """Aplica features estilométricas com estatísticas de treino."""
+    X = np.array([_stylometric_single(t) for t in texts])
+    return (X - means) / stds
+
+
+# ── vectorizador combinado v2 (TF-IDF + char n-grams + estilometria) ──────────
+
+class CombinedVectorizerV2:
+    """TF-IDF palavras + char n-grams + features estilométricas."""
+
+    def __init__(self, max_words=15000, ngram_range=(1, 2),
+                 max_chars=10000, char_range=(3, 5)):
+        self.tfidf    = TFIDFVectorizer(max_words=max_words, ngram_range=ngram_range)
+        self.char_vec = CharNgramVectorizer(max_features=max_chars, ngram_range=char_range)
+        self.word_index = {}
+        self.style_means = None
+        self.style_stds  = None
+
+    def fit_transform(self, raw_texts):
+        clean = [clean_text(t) for t in raw_texts]
+        X_word = self.tfidf.fit_transform(clean)
+        self.word_index = self.tfidf.word_index
+        X_char = self.char_vec.fit_transform(raw_texts)
+        X_style, self.style_means, self.style_stds = extract_stylometric_features(raw_texts)
+        return np.hstack([X_word, X_char, X_style])
+
+    def transform(self, raw_texts):
+        clean = [clean_text(t) for t in raw_texts]
+        X_word = self.tfidf.transform(clean)
+        X_char = self.char_vec.transform(raw_texts)
+        X_style = apply_stylometric_features(raw_texts, self.style_means, self.style_stds)
+        return np.hstack([X_word, X_char, X_style])
 
 # ── labels ─────────────────────────────────────────────────────────────────────
 

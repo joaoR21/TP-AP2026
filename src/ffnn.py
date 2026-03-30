@@ -60,6 +60,45 @@ def evaluate_loss_accuracy(model, loader, criterion):
     return total_loss / total, correct / total
 
 
+class FFNNv2(nn.Module):
+    """FFNN melhorada com BatchNorm, skip-connections e activação configurável."""
+
+    def __init__(self, input_dim, n_classes=5, topology=[512, 256, 128],
+                 dropout=0.3, activation='gelu'):
+        super().__init__()
+        act_fn = {'relu': nn.ReLU, 'gelu': nn.GELU, 'silu': nn.SiLU, 'leakyrelu': nn.LeakyReLU}
+        Act = act_fn.get(activation, nn.GELU)
+
+        self.input_proj = nn.Linear(input_dim, topology[0])
+        self.input_bn = nn.BatchNorm1d(topology[0])
+        self.input_act = Act()
+        self.input_drop = nn.Dropout(dropout)
+
+        self.blocks = nn.ModuleList()
+        for i in range(len(topology) - 1):
+            block = nn.ModuleDict({
+                'linear': nn.Linear(topology[i], topology[i + 1]),
+                'bn': nn.BatchNorm1d(topology[i + 1]),
+                'act': Act(),
+                'drop': nn.Dropout(dropout),
+            })
+            if topology[i] != topology[i + 1]:
+                block['skip'] = nn.Linear(topology[i], topology[i + 1], bias=False)
+            self.blocks.append(block)
+
+        self.head = nn.Linear(topology[-1], n_classes)
+
+    def forward(self, x):
+        x = self.input_drop(self.input_act(self.input_bn(self.input_proj(x))))
+        for block in self.blocks:
+            identity = x
+            out = block['drop'](block['act'](block['bn'](block['linear'](x))))
+            if 'skip' in block:
+                identity = block['skip'](identity)
+            x = out + identity
+        return self.head(x)
+
+
 def train_model(model, train_loader, val_loader, epochs=50, lr=0.001, patience=10, class_weight=None, weight_decay=1e-4):
     weight_tensor = torch.tensor(class_weight, dtype=torch.float32).to(device) if class_weight is not None else None
     criterion = nn.CrossEntropyLoss(weight=weight_tensor)
